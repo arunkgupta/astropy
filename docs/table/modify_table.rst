@@ -34,6 +34,35 @@ The code below shows the basics of modifying a table and its data.
   >>> t[1]['b'] = -9              # Set column 'b' of row 1
   >>> t[0:3]['c'] = 100           # Set column 'c' of rows 0, 1, 2
 
+Note that ``table[row][column]`` assignments will not work with
+`numpy` "fancy" ``row`` indexing (in that case ``table[row]`` would be
+a *copy* instead of a *view*).  "Fancy" `numpy` indices include a
+`list`, `numpy.ndarray`, or `tuple` of `numpy.ndarray` (e.g. the
+return from `numpy.where`)::
+
+  >>> t[[1, 2]]['a'] = [3., 5.]             # doesn't change table t
+  >>> t[np.array([1, 2])]['a'] = [3., 5.]   # doesn't change table t
+  >>> t[np.where(t['a'] > 3)]['a'] = 3.     # doesn't change table t
+
+Instead use ``table[column][row]`` order::
+
+  >>> t['a'][[1, 2]] = [3., 5.]
+  >>> t['a'][np.array([1, 2])] = [3., 5.]
+  >>> t['a'][np.where(t['a'] > 3)] = 3.
+
+You can also modify data columns with ``unit`` set in a way that follows
+the conventions of `~astropy.units.Quantity` by using the
+:attr:`~astropy.table.Column.quantity` property::
+
+  >>> from astropy import units as u
+  >>> tu = Table([[1, 2.5]], names=('a',))
+  >>> tu['a'].unit = u.m
+  >>> tu['a'].quantity[:] = [1, 2] * u.km
+  >>> tu['a']
+  <Column name='a' dtype='float64' unit='m' length=2>
+  1000.0
+  2000.0
+
 **Add a column or columns**
 
 A single column can be added to a table using syntax like adding a dict value.
@@ -64,8 +93,12 @@ Finally, columns can also be added from
   >>> from astropy import units as u
   >>> t['d'] = np.arange(1., 6.) * u.m
   >>> t['d']
-  <Column name='d' unit='m' format=None description=None>
-  array([ 1., 2., 3., 4., 5.])
+  <Column name='d' dtype='float64' unit='m' length=5>
+  1.0
+  2.0
+  3.0
+  4.0
+  5.0
 
 **Remove columns**
 ::
@@ -75,6 +108,18 @@ Finally, columns can also be added from
   >>> del t['g']
   >>> del t['h', 'i']
   >>> t.keep_columns(['a', 'b'])
+
+**Replace a column**
+
+For a table with an existing column ``a``, an expression like ``t['a'] = [1, 2,
+3]`` or ``t['a'] = 1`` replaces the data *values* without changing the data
+type or anything else about the column.  In order to entirely replace the
+column with a new column (and potentially change the data type), use the
+:meth:`~astropy.table.Table.replace_column` method.  For instance, to change
+the data type of the ``a`` column from ``int`` to ``float``:
+
+  >>> a_float = t['a'].astype(float)
+  >>> t.replace_column('a', a_float)
 
 **Rename columns**
 ::
@@ -146,7 +191,7 @@ using column selection with ``t['a', 'c']`` in combination with row index select
 
   >>> t = Table([[1, 2], [3, 4], [5, 6]], names=('a', 'b', 'c'))
   >>> t['a', 'c'][1] = (100, 100)
-  >>> print t
+  >>> print(t)
    a   b   c
   --- --- ---
     1   3   5

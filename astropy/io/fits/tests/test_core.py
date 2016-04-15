@@ -2,10 +2,10 @@
 from __future__ import division, with_statement
 
 import gzip
+import bz2
 import io
 import mmap
 import os
-import shutil
 import warnings
 import zipfile
 
@@ -18,13 +18,20 @@ except ImportError:
     HAVE_STRINGIO = False
 
 from ....io import fits
-from ....tests.helper import pytest, raises, catch_warnings
+from ....tests.helper import pytest, raises, catch_warnings, ignore_warnings
 from ....utils.exceptions import AstropyDeprecationWarning
+from ....utils.data import get_pkg_data_filename
 from . import FitsTestCase
-from .util import ignore_warnings
 from ..convenience import _getext
 from ..diff import FITSDiff
-from ..file import _File
+from ..file import _File, GZIP_MAGIC
+
+try:
+    import pathlib
+except ImportError:
+    HAS_PATHLIB = False
+else:
+    HAS_PATHLIB = True
 
 
 class TestCore(FitsTestCase):
@@ -65,6 +72,22 @@ class TestCore(FitsTestCase):
 
         with fits.open(self.temp('test.fits')) as p:
             assert p[1].data[1]['foo'] == 60000.0
+
+    @pytest.mark.skipif('not HAS_PATHLIB')
+    def test_fits_file_path_object(self):
+        """
+        Testing when fits file is passed as pathlib.Path object #4412.
+        """
+        fpath = pathlib.Path(get_pkg_data_filename('data/tdim.fits'))
+        hdulist = fits.open(fpath)
+
+        assert hdulist[0].filebytes() == 2880
+        assert hdulist[1].filebytes() == 5760
+
+        hdulist2 = fits.open(self.data('tdim.fits'))
+
+        assert FITSDiff(hdulist2, hdulist).identical is True
+
 
     def test_add_del_columns(self):
         p = fits.ColDefs([])
@@ -149,7 +172,7 @@ class TestCore(FitsTestCase):
         assert header.ascard['BITPIX'].comment == comment
 
     def test_uint(self):
-        hdulist_f = fits.open(self.data('o4sp040b0_raw.fits'))
+        hdulist_f = fits.open(self.data('o4sp040b0_raw.fits'), uint=False)
         hdulist_i = fits.open(self.data('o4sp040b0_raw.fits'), uint=True)
 
         assert hdulist_f[1].data.dtype == np.float32
@@ -572,7 +595,7 @@ class TestFileFunctions(FitsTestCase):
         try:
             fits.open(self.temp('foobar.fits'))
         except IOError as e:
-            assert 'File does not exist' in str(e)
+            assert 'No such file or directory' in str(e)
         except:
             raise
 
@@ -617,6 +640,37 @@ class TestFileFunctions(FitsTestCase):
         with fits.open(self.temp('test.fits.gz')) as hdul:
             assert hdul[0].header == h.header
 
+    def test_open_bzipped(self):
+        with ignore_warnings():
+            assert len(fits.open(self._make_bzip2_file())) == 5
+
+    def test_detect_bzipped(self):
+        """Test detection of a bzip2 file when the extension is not .bz2."""
+
+        with ignore_warnings():
+            assert len(fits.open(self._make_bzip2_file('test0.xx'))) == 5
+
+    def test_writeto_bzip2_fileobj(self):
+        """Test writing to a bz2.BZ2File file like object"""
+        fileobj = bz2.BZ2File(self.temp('test.fits.bz2'), 'w')
+        h = fits.PrimaryHDU()
+        try:
+            h.writeto(fileobj)
+        finally:
+            fileobj.close()
+
+        with fits.open(self.temp('test.fits.bz2')) as hdul:
+            assert hdul[0].header == h.header
+
+    def test_writeto_bzip2_filename(self):
+        """Test writing to a bzip2 file by name"""
+        filename = self.temp('testname.fits.bz2')
+        h = fits.PrimaryHDU()
+        h.writeto(filename)
+
+        with fits.open(self.temp('testname.fits.bz2')) as hdul:
+            assert hdul[0].header == h.header
+
     def test_open_zipped(self):
         zf = self._make_zip_file()
 
@@ -643,6 +697,19 @@ class TestFileFunctions(FitsTestCase):
         zf = zipfile.ZipFile(zf, 'a')
         pytest.raises(IOError, fits.open, zf, 'update')
         pytest.raises(IOError, fits.open, zf, 'append')
+
+    def test_read_open_astropy_gzip_file(self):
+        """
+        Regression test for https://github.com/astropy/astropy/issues/2774
+
+        This tests reading from a ``GzipFile`` object from Astropy's
+        compatibility copy of the ``gzip`` module.
+        """
+        gf = gzip.GzipFile(self._make_gzip_file())
+        try:
+            assert len(fits.open(gf)) == 5
+        finally:
+            gf.close()
 
     @raises(IOError)
     def test_open_multiple_member_zipfile(self):
@@ -692,6 +759,23 @@ class TestFileFunctions(FitsTestCase):
             # normal writes should work too...
             assert h[0].header['EXPFLAG'] == 'ABNORMAL'
 
+    def test_write_read_gzip_file(self):
+        """
+        Regression test for https://github.com/astropy/astropy/issues/2794
+
+        Ensure files written through gzip are readable.
+        """
+
+        data = np.arange(100)
+        hdu = fits.PrimaryHDU(data=data)
+        hdu.writeto(self.temp('test.fits.gz'))
+
+        with open(self.temp('test.fits.gz'), 'rb') as f:
+            assert f.read(3) == GZIP_MAGIC
+
+        with fits.open(self.temp('test.fits.gz')) as hdul:
+            assert np.all(hdul[0].data == data)
+
     def test_read_file_like_object(self):
         """Test reading a FITS file from a file-like object."""
 
@@ -724,6 +808,52 @@ class TestFileFunctions(FitsTestCase):
 
         assert old_mode == os.stat(filename).st_mode
 
+    def test_fileobj_mode_guessing(self):
+        """Tests whether a file opened without a specified pyfits mode
+        ('readonly', etc.) is opened in a mode appropriate for the given file
+        object.
+        """
+
+        self.copy_file('test0.fits')
+
+        # Opening in text mode should outright fail
+        for mode in ('r', 'w', 'a'):
+            with open(self.temp('test0.fits'), mode) as f:
+                pytest.raises(ValueError, fits.HDUList.fromfile, f)
+
+        # Need to re-copy the file since opening it in 'w' mode blew it away
+        self.copy_file('test0.fits')
+
+        with open(self.temp('test0.fits'), 'rb') as f:
+            with fits.HDUList.fromfile(f) as h:
+                assert h.fileinfo(0)['filemode'] == 'readonly'
+
+        for mode in ('wb', 'ab'):
+            with open(self.temp('test0.fits'), mode) as f:
+                with fits.HDUList.fromfile(f) as h:
+                    # Basically opening empty files for output streaming
+                    assert len(h) == 0
+
+        # Need to re-copy the file since opening it in 'w' mode blew it away
+        self.copy_file('test0.fits')
+
+        with open(self.temp('test0.fits'), 'wb+') as f:
+            with fits.HDUList.fromfile(f) as h:
+                # wb+ still causes an existing file to be overwritten so there
+                # are no HDUs
+                assert len(h) == 0
+
+        # Need to re-copy the file since opening it in 'w' mode blew it away
+        self.copy_file('test0.fits')
+
+        with open(self.temp('test0.fits'), 'rb+') as f:
+            with fits.HDUList.fromfile(f) as h:
+                assert h.fileinfo(0)['filemode'] == 'update'
+
+        with open(self.temp('test0.fits'), 'ab+') as f:
+            with fits.HDUList.fromfile(f) as h:
+                assert h.fileinfo(0)['filemode'] == 'append'
+
     def test_mmap_unwriteable(self):
         """Regression test for https://github.com/astropy/astropy/issues/968
 
@@ -739,7 +869,7 @@ class TestFileFunctions(FitsTestCase):
         mmap.mmap = MockMmap
 
         # Force the mmap test to be rerun
-        _File._mmap_available = None
+        _File.__dict__['_mmap_available']._cache.clear()
 
         try:
             self.copy_file('test0.fits')
@@ -756,43 +886,57 @@ class TestFileFunctions(FitsTestCase):
                 assert h[1].data[0, 0] == 999
         finally:
             mmap.mmap = old_mmap
-            _File._mmap_available = None
+            _File.__dict__['_mmap_available']._cache.clear()
 
-    def test_mmap_unwriteable(self):
-        """Regression test for
-        https://github.com/astropy/astropy/issues/968
-
-        Temporarily patches mmap.mmap to exhibit platform-specific bad
-        behavior.
+    def test_mmap_closing(self):
+        """
+        Tests that the mmap reference is closed/removed when there aren't any
+        HDU data references left.
         """
 
-        class MockMmap(mmap.mmap):
-            def flush(self):
-                raise mmap.error('flush is broken on this platform')
+        if not _File._mmap_available:
+            pytest.xfail('not expected to work on platforms without mmap '
+                         'support')
 
-        old_mmap = mmap.mmap
-        mmap.mmap = MockMmap
+        with fits.open(self.data('test0.fits'), memmap=True) as hdul:
+            assert hdul._file._mmap is None
 
-        # Force the mmap test to be rerun
-        _File._mmap_available = None
+            hdul[1].data
+            assert hdul._file._mmap is not None
 
-        try:
-            # TODO: Use self.copy_file once it's merged into Astropy
-            shutil.copy(self.data('test0.fits'), self.temp('test0.fits'))
-            with catch_warnings() as w:
-                with fits.open(self.temp('test0.fits'), mode='update',
-                               memmap=True) as h:
-                    h[1].data[0, 0] = 999
+            del hdul[1].data
+            # Should be no more references to data in the file so close the
+            # mmap
+            assert hdul._file._mmap is None
 
-                assert len(w) == 1
-                assert 'mmap.flush is unavailable' in str(w[0].message)
+            hdul[1].data
+            hdul[2].data
+            del hdul[1].data
+            # hdul[2].data is still references so keep the mmap open
+            assert hdul._file._mmap is not None
+            del hdul[2].data
+            assert hdul._file._mmap is None
 
-            # Double check that writing without mmap still worked
-            with fits.open(self.temp('test0.fits')) as h:
-                assert h[1].data[0, 0] == 999
-        finally:
-            mmap.mmap = old_mmap
-            _File._mmap_available = None
+        assert hdul._file._mmap is None
+
+        with fits.open(self.data('test0.fits'), memmap=True) as hdul:
+            hdul[1].data
+
+        # When the only reference to the data is on the hdu object, and the
+        # hdulist it belongs to has been closed, the mmap should be closed as
+        # well
+        assert hdul._file._mmap is None
+
+        with fits.open(self.data('test0.fits'), memmap=True) as hdul:
+            data = hdul[1].data
+            # also make a copy
+            data_copy = data.copy()
+
+        # The HDUList is closed; in fact, get rid of it completely
+        del hdul
+
+        # The data array should still work though...
+        assert np.all(data == data_copy)
 
     def test_uncloseable_file(self):
         """
@@ -839,6 +983,26 @@ class TestFileFunctions(FitsTestCase):
 
         self._test_write_string_bytes_io(StringIO.StringIO())
 
+    @pytest.mark.skipif('not HAVE_STRINGIO')
+    def test_write_stringio_discontiguous(self):
+        """
+        Regression test related to
+        https://github.com/astropy/astropy/issues/2794#issuecomment-55441539
+
+        Demonstrates that writing an HDU containing a discontiguous Numpy array
+        should work properly.
+        """
+
+        data = np.arange(100)[::3]
+        hdu = fits.PrimaryHDU(data=data)
+        fileobj = StringIO.StringIO()
+        hdu.writeto(fileobj)
+
+        fileobj.seek(0)
+
+        with fits.open(fileobj) as h:
+            assert np.all(h[0].data == data)
+
     def test_write_bytesio(self):
         """
         Regression test for https://github.com/astropy/astropy/issues/2463
@@ -847,6 +1011,23 @@ class TestFileFunctions(FitsTestCase):
         """
 
         self._test_write_string_bytes_io(io.BytesIO())
+
+    @pytest.mark.skipif(str('sys.platform.startswith("win32")'))
+    def test_filename_with_colon(self):
+        """
+        Test reading and writing a file with a colon in the filename.
+
+        Regression test for https://github.com/astropy/astropy/issues/3122
+        """
+
+        # Skip on Windows since colons in filenames makes NTFS sad.
+
+        filename = 'APEXHET.2014-04-01T15:18:01.000.fits'
+        hdu = fits.PrimaryHDU(data=np.arange(10))
+        hdu.writeto(self.temp(filename))
+
+        with fits.open(self.temp(filename)) as hdul:
+            assert np.all(hdul[0].data == hdu.data)
 
     def _test_write_string_bytes_io(self, fileobj):
         """
@@ -873,6 +1054,15 @@ class TestFileFunctions(FitsTestCase):
         zfile.close()
 
         return zfile.filename
+
+    def _make_bzip2_file(self, filename='test0.fits.bz2'):
+        bzfile = self.temp(filename)
+        with open(self.data('test0.fits'), 'rb') as f:
+            bz = bz2.BZ2File(bzfile, 'w')
+            bz.write(f.read())
+            bz.close()
+
+        return bzfile
 
 
 class TestStreamingFunctions(FitsTestCase):
@@ -960,3 +1150,13 @@ class TestStreamingFunctions(FitsTestCase):
 
         with fits.open(self.data('blank.fits'), ignore_blank=True) as f:
             assert f[0].data.flat[0] == 2
+
+    def test_error_if_memmap_impossible(self):
+        pth = self.data('blank.fits')
+        with pytest.raises(ValueError):
+            fits.open(pth, memmap=True)[0].data
+
+        # However, it should not fail if do_not_scale_image_data was used:
+        # See https://github.com/astropy/astropy/issues/3766
+        hdul = fits.open(pth, memmap=True, do_not_scale_image_data=True)
+        hdul[0].data  # Just make sure it doesn't crash

@@ -18,8 +18,7 @@ For this setup we will need flymake_, pyflakes_ and the pep8_ Python
 script, in addition to ``python-mode``.
 
 Flymake comes with Emacs 23. The rest can be obtained from their websites,
-or can be installed using `easy_install
-<http://pythonhosted.org//setuptools/easy_install.html>`_ or `pip`_.
+or can be installed using `pip`_.
 
 Global settings
 ===============
@@ -131,7 +130,10 @@ file must be in the system path.
   pep8 --ignore=E221,E701,E202 --repeat "$1"
   true
 
-Add the following code to Emacs configurations.
+Also download `flymake-cursor.el
+<http://www.emacswiki.org/emacs/flymake-cursor.el>`_ and place it in the
+Emacs configuration directory.  Then add the following code to the Emacs
+configuration:
 
 .. code-block:: scheme
 

@@ -1,6 +1,7 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Common utilities for accessing VO simple services."""
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
 from ...extern import six
 from ...extern.six.moves import urllib
 
@@ -9,18 +10,22 @@ import fnmatch
 import json
 import os
 import re
+import socket
 import warnings
 
 from collections import defaultdict
 from copy import deepcopy
 
 # LOCAL
-from .exceptions import VOSError, MissingCatalog, DuplicateCatalogName, DuplicateCatalogURL, InvalidAccessURL
+from .exceptions import (VOSError, MissingCatalog, DuplicateCatalogName,
+                         DuplicateCatalogURL, InvalidAccessURL)
+from .. import conf as vo_conf
 from ...io.votable import parse_single_table, table, tree
-from ...config import ConfigAlias
+from ...io.votable import conf as votable_conf
 from ...io.votable.exceptions import vo_raise, vo_warn, E19, W24, W25
 from ...utils.console import color_print
-from ...utils.data import get_readable_fileobj, REMOTE_TIMEOUT
+from ...utils.data import get_readable_fileobj
+from ...utils.data import conf as data_conf
 from ...utils.exceptions import AstropyUserWarning
 from ...utils.misc import JsonCustomEncoder
 from ...utils.xml.unescaper import unescape_all
@@ -30,10 +35,6 @@ __all__ = ['VOSBase', 'VOSCatalog', 'VOSDatabase', 'get_remote_catalog_db',
            'call_vo_service', 'list_catalogs']
 
 __dbversion__ = 1
-
-BASEURL = ConfigAlias(
-    '0.4', 'BASEURL', 'vos_baseurl',
-    'astropy.vo.client.vos_catalog', 'astropy.vo')
 
 
 class VOSBase(object):
@@ -522,7 +523,7 @@ class VOSDatabase(VOSBase):
             Pedantic is automatically set to `False` for parsing.
 
         timeout : number
-            Temporarily set ``astropy.utils.data.REMOTE_TIMEOUT`` to
+            Temporarily set `astropy.utils.data.Conf.remote_timeout` to
             this value to avoid time out error while reading the
             entire registry.
 
@@ -542,7 +543,7 @@ class VOSDatabase(VOSBase):
 
         """
         # Download registry as VO table
-        with REMOTE_TIMEOUT.set_temp(timeout):
+        with data_conf.set_temp('remote_timeout', timeout):
             with get_readable_fileobj(registry_url, **kwargs) as fd:
                 tab_all = parse_single_table(fd, pedantic=False)
 
@@ -576,7 +577,7 @@ class VOSDatabase(VOSBase):
                     title_counter[cur_title] += 1  # Starts with 1
 
                     if isinstance(cur_title, bytes):  # pragma: py3
-                        cur_key = title_fmt.format(cur_title.decode('ascii'),
+                        cur_key = title_fmt.format(cur_title.decode('utf-8'),
                                                    title_counter[cur_title])
                     else:  # pragma: py2
                         cur_key = title_fmt.format(cur_title,
@@ -631,10 +632,8 @@ def get_remote_catalog_db(dbname, cache=True, verbose=True):
         A database of VO services.
 
     """
-    from .. import conf
-
     return VOSDatabase.from_json(
-        urllib.parse.urljoin(conf.vos_baseurl, dbname + '.json'),
+        urllib.parse.urljoin(vo_conf.vos_baseurl, dbname + '.json'),
         encoding='utf8', cache=cache,
         show_progress=verbose)
 
@@ -680,7 +679,7 @@ def _get_catalogs(service_type, catalog_db, **kwargs):
     return catalogs
 
 
-def _vo_service_request(url, pedantic, kwargs, verbose=False):
+def _vo_service_request(url, pedantic, kwargs, cache=True, verbose=False):
     """This is called by :func:`call_vo_service`.
 
     Raises
@@ -698,7 +697,7 @@ def _vo_service_request(url, pedantic, kwargs, verbose=False):
             urllib.parse.quote(key), urllib.parse.quote_plus(str(value))))
 
     parsed_url = url + '&'.join(query)
-    with get_readable_fileobj(parsed_url, encoding='binary',
+    with get_readable_fileobj(parsed_url, encoding='binary', cache=cache,
                               show_progress=verbose) as req:
         tab = table.parse(req, filename=parsed_url, pedantic=pedantic)
 
@@ -841,11 +840,12 @@ def call_vo_service(service_type, catalog_db=None, pedantic=None,
         If VO service request fails.
 
     """
+    n_timed_out = 0
     catalogs = _get_catalogs(service_type, catalog_db, cache=cache,
                              verbose=verbose)
 
     if pedantic is None:  # pragma: no cover
-        pedantic = votable.conf.pedantic
+        pedantic = votable_conf.pedantic
 
     for name, catalog in catalogs:
         if isinstance(catalog, six.string_types):
@@ -863,11 +863,17 @@ def call_vo_service(service_type, catalog_db=None, pedantic=None,
             color_print('Trying {0}'.format(url), 'green')
 
         try:
-            return _vo_service_request(url, pedantic, kwargs, verbose=verbose)
+            return _vo_service_request(url, pedantic, kwargs, cache=cache,
+                                       verbose=verbose)
         except Exception as e:
             vo_warn(W25, (url, str(e)))
+            if hasattr(e, 'reason') and isinstance(e.reason, socket.timeout):
+                n_timed_out += 1
 
-    raise VOSError('None of the available catalogs returned valid results.')
+    err_msg = 'None of the available catalogs returned valid results.'
+    if n_timed_out > 0:
+        err_msg += ' ({0} URL(s) timed out.)'.format(n_timed_out)
+    raise VOSError(err_msg)
 
 
 def list_catalogs(service_type, cache=True, verbose=True, **kwargs):

@@ -5,9 +5,9 @@ import os
 
 from ..file import _File
 from ..header import _pad_length
-from .base import _BaseHDU
+from .base import _BaseHDU, BITPIX2DTYPE
 from .hdulist import HDUList
-from .image import PrimaryHDU, _ImageBaseHDU
+from .image import PrimaryHDU
 from ..util import fileobj_name
 
 
@@ -68,12 +68,12 @@ class StreamingHDU(object):
 
         # handle a file object instead of a file name
         filename = fileobj_name(name) or ''
-#
-#       Check if the file already exists.  If it does not, check to see
-#       if we were provided with a Primary Header.  If not we will need
-#       to prepend a default PrimaryHDU to the file before writing the
-#       given header.
-#
+
+        # Check if the file already exists.  If it does not, check to see
+        # if we were provided with a Primary Header.  If not we will need
+        # to prepend a default PrimaryHDU to the file before writing the
+        # given header.
+
         newfile = False
 
         if filename:
@@ -87,11 +87,11 @@ class StreamingHDU(object):
                 hdulist = HDUList([PrimaryHDU()])
                 hdulist.writeto(name, 'exception')
         else:
-#
-#               This will not be the first extension in the file so we
-#               must change the Primary header provided into an image
-#               extension header.
-#
+
+            # This will not be the first extension in the file so we
+            # must change the Primary header provided into an image
+            # extension header.
+
             if 'SIMPLE' in self._header:
                 self._header.set('XTENSION', 'IMAGE', 'Image extension',
                                  after='SIMPLE')
@@ -171,14 +171,12 @@ class StreamingHDU(object):
             raise IOError('Attempt to write more data to the stream than the '
                           'header specified.')
 
-        if _ImageBaseHDU.NumCode[self._header['BITPIX']] != data.dtype.name:
+        if BITPIX2DTYPE[self._header['BITPIX']] != data.dtype.name:
             raise TypeError('Supplied data does not match the type specified '
                             'in the header.')
 
         if data.dtype.str[0] != '>':
-#
-#           byteswap little endian arrays before writing
-#
+            # byteswap little endian arrays before writing
             output = data.byteswap()
         else:
             output = data
@@ -186,9 +184,7 @@ class StreamingHDU(object):
         self._ffo.writearray(output)
 
         if self._ffo.tell() - self._data_offset == self._size:
-#
-#           the stream is full so pad the data to the next FITS block
-#
+            # the stream is full so pad the data to the next FITS block
             self._ffo.write(_pad_length(self._size) * '\0')
             self.writecomplete = True
 

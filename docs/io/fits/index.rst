@@ -23,7 +23,14 @@ Getting Started
 This section provides a quick introduction of using :mod:`astropy.io.fits`. The
 goal is to demonstrate the package's basic features without getting into too
 much detail. If you are a first time user or have never used Astropy or PyFITS,
-this is where you should start.
+this is where you should start.  See also the :ref:`FAQ <io-fits-faq>` for
+answers to common questions/issues.
+
+.. note::
+
+    If you want to read or write a single table in FITS format then the
+    simplest method is often via the high-level :ref:`table_io`.  In particular
+    see the :ref:`Unified I/O FITS <table_io_fits>` section.
 
 Reading and Updating Existing FITS Files
 ----------------------------------------
@@ -71,6 +78,8 @@ The headers will still be accessible after the HDUList is closed. The data may
 or may not be accessible depending on whether the data are touched and if they
 are memory-mapped, see later chapters for detail.
 
+.. _fits-large-files:
+
 Working with large files
 """"""""""""""""""""""""
 
@@ -85,6 +94,56 @@ as reading the array data sequentially, may incur some additional overhead.  On
 because by that point you're likely to run out of physical memory anyways), but
 64-bit systems are much less limited in this respect.
 
+.. warning::
+	When opening a file with ``memmap=True``, because of how mmap works this means that 
+	when the HDU data is accessed (i.e. ``hdul[0].data``) another handle to the FITS file
+	is opened by mmap. This means that even after calling ``hdul.close()`` the mmap still
+	holds an open handle to the data so that it can still be accessed by unwary programs
+	that were built with the assumption that the .data attribute has all the data in-memory.
+
+	In order to force the mmap to close either wait for the containing ``HDUList`` object to go 
+	out of scope, or manually call ``del hdul[0].data`` (this works so long as there are no other
+	references held to the data array).
+
+Unsigned integers
+"""""""""""""""""
+
+Due to the FITS format's FORTRAN origins, FITS does not natively support
+unsigned integer data in images or tables.  However, there is a common
+convention to store unsigned integers as signed integers, along with a
+*shift* instruction (a ``BZERO`` keyword with value ``2 ** (BITPIX - 1)``) to
+shift up all signed integers to unsigned inters.  For example, when writing
+the value ``0`` as an unsigned 32-bit integer, it is stored in the FITS
+file as ``-32768``, along with the header keyword ``BZERO = 32768``.
+
+Astropy recognizes and applies this convention by default, so that all data
+that looks like it should be interpreted as unsigned integers is automatically
+converted (this applies to both images and tables).  In Astropy versions prior
+to v1.1.0 this was *not* applied automatically, and it is necessary to pass the
+argument ``uint=True`` to :func:`open`.  In v1.1.0 or later this is the
+default.
+
+Even with ``uint=False``, the ``BZERO`` shift is still applied, but the
+returned array is of "float64" type.  To disable scaling/shifting entirely, use
+``do_not_scale_image_data=True`` (see :ref:`fits-scaled-data-faq` in the FAQ
+for more details).
+
+Working with compressed files
+"""""""""""""""""""""""""""""
+
+The :func:`open` function will seamlessly open FITS files that have been
+compressed with gzip, bzip2 or pkzip. Note that in this context we're talking
+about a fits file that has been compressed with one of these utilities - e.g. a 
+.fits.gz file. Files that use compressed HDUs within the FITS file are discussed
+in :ref:`Compressed Image Data <astropy-io-fits-compressedImageData>`.
+
+There are some limitations with working with compressed files. For example with Zip 
+files that contain multiple compressed files, only the first file will be accessible.
+Also bzip does not support the append or update access modes.
+
+When writing a file (e.g. with the :func:`writeto` function), compression will be
+determined based on the filename extension given, or the compression used in a 
+pre-existing file that is being written to.
 
 Working with FITS Headers
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -179,21 +238,21 @@ To update existing COMMENT or HISTORY cards, reference them by index::
 
 
 To see the entire header as it appears in the FITS file (with the END card and
-padding stripped), simply enter the header object by itself, or ``print
-repr(header)``::
+padding stripped), simply enter the header object by itself, or
+``print(repr(header))``::
 
     >>> header
     SIMPLE  =                    T / file does conform to FITS standard
     BITPIX  =                   16 / number of bits per data pixel
     NAXIS   =                    0 / number of data axes
     all cards are shown...
-    >>> print repr(header)
-    identical...
+    >>> print(repr(header))
+    ... identical ...
 
-Entering simply ``print header`` will also work, but may not be very legible on
-most displays, as this displays the header as it is written in the FITS file
+Entering simply ``print(header)`` will also work, but may not be very legible
+on most displays, as this displays the header as it is written in the FITS file
 itself, which means there are no linebreaks between cards.  This is a common
-confusion in new users.
+source of confusion for new users.
 
 It's also possible to view a slice of the header::
 
@@ -248,7 +307,7 @@ information about the array, e.g.
 Since image data is a numpy object, we can slice it, view it, and perform
 mathematical operations on it. To see the pixel value at x=5, y=2::
 
-    >>> print scidata[1, 4]
+    >>> print(scidata[1, 4])
 
 Note that, like C (and unlike FORTRAN), Python is 0-indexed and the indices
 have the slowest axis first and fastest changing axis last; i.e. for a 2-D
@@ -288,10 +347,10 @@ a new file, you can use the :meth:`HDUList.writeto` method (see below).
 Working With Table Data
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-If you are familiar with numpy `~numpy.recarray` (record array) objects, you
-will find the table data is basically a record array with some extra
-properties. But familiarity with record arrays is not a prerequisite for this
-guide.
+This section describes reading and writing table data in the FITS format using
+the `~astropy.io.fits` package directly.  For simple cases, however, the
+high-level :ref:`table_io` will often suffice and is somewhat easier to use.
+See the :ref:`Unified I/O FITS <table_io_fits>` section for details.
 
 Like images, the data portion of a FITS table extension is in the ``.data``
 attribute::
@@ -299,9 +358,14 @@ attribute::
     >>> hdulist = fits.open('table.fits')
     >>> tbdata = hdulist[1].data # assuming the first extension is a table
 
+If you are familiar with numpy `~numpy.recarray` (record array) objects, you
+will find the table data is basically a record array with some extra
+properties. But familiarity with record arrays is not a prerequisite for this
+guide.
+
 To see the first row of the table::
 
-    >>> print tbdata[0]
+    >>> print(tbdata[0])
     (1, 'abc', 3.7000002861022949, 0)
 
 Each row in the table is a :class:`FITS_record` object which looks like a
@@ -341,7 +405,7 @@ attribute::
     >>> cols = hdulist[1].columns
 
 This attribute is a :class:`ColDefs` (column definitions) object. If we use the
-:meth:`ColDefs.info` method::
+:meth:`ColDefs.info` method from the interactive prompt::
 
     >>> cols.info()
      name:
@@ -364,7 +428,12 @@ This attribute is a :class:`ColDefs` (column definitions) object. If we use the
           ['', '', '', '']
 
 it will show the attributes of all columns in the table, such as their names,
-formats, bscales, bzeros, etc.  We can also get these properties individually;
+formats, bscales, bzeros, etc. A similar output that will display the column
+names and their formats can be printed from within a script with::
+
+    print hdulist[1].columns
+
+We can also get these properties individually;
 e.g.
 
 ::
@@ -492,7 +561,7 @@ variables for the individual columns and without manually creating a
 
 Now you may write this new table HDU directly to a FITS file like so::
 
-    >>> hdu = fits.PrimaryHDU(n)
+    >>> tbhdu.writeto('table.fits')
 
 This shortcut will automatically create a minimal primary HDU with no data and
 prepend it to the table HDU to create a valid FITS file.  If you require
@@ -679,8 +748,8 @@ Other Information
 .. toctree::
     :maxdepth: 1
 
-    appendix/header_transition
     appendix/faq
+    appendix/header_transition
     appendix/history
 
 Reference/API

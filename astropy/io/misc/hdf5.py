@@ -14,15 +14,17 @@ import warnings
 import numpy as np
 from ...utils.exceptions import AstropyUserWarning
 from ...extern import six
+from ...table import meta
 
 HDF5_SIGNATURE = b'\x89HDF\r\n\x1a\n'
+META_KEY = '__table_column_meta__'
 
 __all__ = ['read_table_hdf5', 'write_table_hdf5']
 
 
 def _find_all_structured_arrays(handle):
     """
-    Find all sturctured arrays in an HDF5 file
+    Find all structured arrays in an HDF5 file
     """
     import h5py
     structured_arrays = []
@@ -51,22 +53,23 @@ def is_hdf5(origin, filepath, fileobj, *args, **kwargs):
     except ImportError:
         return False
     else:
-        return isinstance(args[0], (h5py.highlevel.File, h5py.highlevel.Group))
+        return isinstance(args[0], (h5py.highlevel.File, h5py.highlevel.Group, h5py.highlevel.Dataset))
 
 
 def read_table_hdf5(input, path=None):
     """
     Read a Table object from an HDF5 file
 
-    This requires `h5py <http://alfven.org/wp/hdf5-for-python/>`_ to be
-    installed. If more than one table is present in the HDF5 file or group, the
-    first table is read in and a warning is displayed.
+    This requires `h5py <http://h5py.org/>`_ to be installed. If more than one
+    table is present in the HDF5 file or group, the first table is read in and
+    a warning is displayed.
 
     Parameters
     ----------
-    input : str or :class:`h5py:File` or :class:`h5py:Group` or :class:`h5py:Dataset`
-        If a string, the filename to read the table from. If an h5py object,
-        either the file or the group object to read the table from.
+    input : str or :class:`h5py:File` or :class:`h5py:Group` or
+        :class:`h5py:Dataset` If a string, the filename to read the table from.
+        If an h5py object, either the file or the group object to read the
+        table from.
     path : str
         The path from which to read the table inside the HDF5 file.
         This should be relative to the input file or group.
@@ -98,12 +101,14 @@ def read_table_hdf5(input, path=None):
             arrays = _find_all_structured_arrays(input)
 
             if len(arrays) == 0:
-                raise ValueError("no table found in HDF5 group {0}".format(path))
+                raise ValueError("no table found in HDF5 group {0}".
+                                 format(path))
             elif len(arrays) > 0:
                 path = arrays[0] if path is None else path + '/' + arrays[0]
                 warnings.warn("path= was not specified but multiple tables"
                               " are present, reading in first available"
-                              " table (path={0})".format(path), AstropyUserWarning)
+                              " table (path={0})".format(path),
+                              AstropyUserWarning)
                 return read_table_hdf5(input, path=path)
 
     elif not isinstance(input, h5py.highlevel.Dataset):
@@ -135,18 +140,30 @@ def read_table_hdf5(input, path=None):
     table = Table(np.array(input))
 
     # Read the meta-data from the file
-    table.meta.update(input.attrs)
+    if META_KEY in input.attrs:
+        header = meta.get_header_from_yaml(
+            h.decode('utf-8') for h in input.attrs[META_KEY])
+        if 'meta' in list(header.keys()):
+            table.meta = header['meta']
+
+        header_cols = dict((x['name'], x) for x in header['datatype'])
+        for col in table.columns.values():
+            for attr in ('description', 'format', 'unit', 'meta'):
+                if attr in header_cols[col.name]:
+                    setattr(col, attr, header_cols[col.name][attr])
+    else:
+        # Read the meta-data from the file
+        table.meta.update(input.attrs)
 
     return table
 
 
 def write_table_hdf5(table, output, path=None, compression=False,
-                     append=False, overwrite=False):
+                     append=False, overwrite=False, serialize_meta=False):
     """
     Write a Table object to an HDF5 file
 
-    This requires `h5py <http://alfven.org/wp/hdf5-for-python/>`_ to be
-    installed.
+    This requires `h5py <http://h5py.org/>`_ to be installed.
 
     Parameters
     ----------
@@ -168,12 +185,21 @@ def write_table_hdf5(table, output, path=None, compression=False,
         Whether to append the table to an existing HDF5 file.
     overwrite : bool
         Whether to overwrite any existing file without warning.
+        If ``append=True`` and ``overwrite=True`` then only the dataset will be
+        replaced; the file/group will not be overwritten.
     """
 
     try:
         import h5py
     except ImportError:
         raise Exception("h5py is required to read and write HDF5 files")
+
+    # Tables with mixin columns are not supported
+    if table.has_mixin_columns:
+        mixin_names = [name for name, col in table.columns.items()
+                       if not isinstance(col, table.ColumnClass)]
+        raise ValueError('cannot write table with mixin column(s) {0} to HDF5'
+                         .format(mixin_names))
 
     if path is None:
         raise ValueError("table path should be set via the path= argument")
@@ -198,7 +224,7 @@ def write_table_hdf5(table, output, path=None, compression=False,
     elif isinstance(output, six.string_types):
 
         if os.path.exists(output) and not append:
-            if overwrite:
+            if overwrite and not append:
                 os.remove(output)
             else:
                 raise IOError("File exists: {0}".format(output))
@@ -210,31 +236,50 @@ def write_table_hdf5(table, output, path=None, compression=False,
         try:
             return write_table_hdf5(table, f, path=path,
                                     compression=compression, append=append,
-                                    overwrite=overwrite)
+                                    overwrite=overwrite,
+                                    serialize_meta=serialize_meta)
         finally:
             f.close()
 
     else:
 
-        raise TypeError('output should be a string or an h5py File or Group object')
+        raise TypeError('output should be a string or an h5py File or '
+                        'Group object')
 
     # Check whether table already exists
     if name in output_group:
-        raise IOError("Table {0} already exists".format(path))
+        if append and overwrite:
+            # Delete only the dataset itself
+            del output_group[name]
+        else:
+            raise IOError("Table {0} already exists".format(path))
 
     # Write the table to the file
     if compression:
         if compression is True:
             compression = 'gzip'
-        dset = output_group.create_dataset(name, data=table._data, compression=compression)
+        dset = output_group.create_dataset(name, data=table.as_array(),
+                                           compression=compression)
     else:
-        dset = output_group.create_dataset(name, data=table._data)
+        dset = output_group.create_dataset(name, data=table.as_array())
 
-    # Write the meta-data to the file
-    for key in table.meta:
-        val = table.meta[key]
+    if serialize_meta:
+        header_yaml = meta.get_yaml_from_table(table)
+
         try:
-            dset.attrs[key] = val
-        except TypeError:
-            warnings.warn("Attribute `{0}` of type {1} cannot be written to "
-                          "HDF5 files - skipping".format(key, type(val)), AstropyUserWarning)
+            dset.attrs[META_KEY] = [h.encode('utf8') for h in header_yaml]
+        except Exception as e:
+            warnings.warn("Attributes could not be written to the output HDF5 "
+                          "file: {0}".format(e))
+
+    else:
+        # Write the meta-data to the file
+        for key in table.meta:
+            val = table.meta[key]
+            try:
+                dset.attrs[key] = val
+            except TypeError:
+                warnings.warn("Attribute `{0}` of type {1} cannot be written to "
+                              "HDF5 files - skipping. (Consider specifying "
+                              "serialize_meta=True to write all meta data)".format(key, type(val)),
+                              AstropyUserWarning)

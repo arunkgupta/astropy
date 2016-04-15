@@ -1,7 +1,7 @@
 /*============================================================================
 
-  WCSLIB 4.23 - an implementation of the FITS WCS standard.
-  Copyright (C) 1995-2014, Mark Calabretta
+  WCSLIB 5.14 - an implementation of the FITS WCS standard.
+  Copyright (C) 1995-2016, Mark Calabretta
 
   This file is part of WCSLIB.
 
@@ -22,8 +22,12 @@
 
   Author: Mark Calabretta, Australia Telescope National Facility, CSIRO.
   http://www.atnf.csiro.au/people/Mark.Calabretta
-  $Id: getwcstab.h,v 4.23 2014/05/11 04:09:38 mcalabre Exp $
+  $Id: getwcstab.h,v 5.14 2016/02/07 10:49:31 mcalabre Exp $
 *=============================================================================
+*
+* WCSLIB 5.14 - C routines that implement the FITS World Coordinate System
+* (WCS) standard.  Refer to the README file provided with WCSLIB for an
+* overview of the library.
 *
 * Summary of the getwcstab routines
 * ---------------------------------

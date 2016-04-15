@@ -19,10 +19,6 @@ def prereleaser_middle(data):
     zest.releaser already does this normally but it's a little inflexible about
     the format.
     """
-
-    if data['name'] != 'astropy':
-        return
-
     _update_setup_py_version(data['new_version'])
 
 
@@ -34,10 +30,6 @@ def releaser_middle(data):
     distributions.  This is supposedly a workaround for a bug in Python 2.4,
     but we don't care about Python 2.4.
     """
-
-    if data['name'] != 'astropy':
-        return
-
     from zest.releaser.git import Git
     from zest.releaser.release import Releaser
 
@@ -104,17 +96,147 @@ def releaser_middle(data):
     Releaser._sdist_options = _my_sdist_options
 
 
+_NEW_CHANGELOG_TEMPLATE = str("""\
+New Features
+^^^^^^^^^^^^
+
+- ``astropy.config``
+
+- ``astropy.constants``
+
+- ``astropy.convolution``
+
+- ``astropy.coordinates``
+
+- ``astropy.cosmology``
+
+- ``astropy.io.ascii``
+
+- ``astropy.io.fits``
+
+- ``astropy.io.misc``
+
+- ``astropy.io.registry``
+
+- ``astropy.io.votable``
+
+- ``astropy.modeling``
+
+- ``astropy.nddata``
+
+- ``astropy.stats``
+
+- ``astropy.sphinx``
+
+- ``astropy.table``
+
+- ``astropy.time``
+
+- ``astropy.units``
+
+- ``astropy.utils``
+
+- ``astropy.vo``
+
+- ``astropy.wcs``
+
+API Changes
+^^^^^^^^^^^
+
+- ``astropy.config``
+
+- ``astropy.constants``
+
+- ``astropy.convolution``
+
+- ``astropy.coordinates``
+
+- ``astropy.cosmology``
+
+- ``astropy.io.ascii``
+
+- ``astropy.io.fits``
+
+- ``astropy.io.misc``
+
+- ``astropy.io.registry``
+
+- ``astropy.io.votable``
+
+- ``astropy.modeling``
+
+- ``astropy.nddata``
+
+- ``astropy.stats``
+
+- ``astropy.table``
+
+- ``astropy.time``
+
+- ``astropy.units``
+
+- ``astropy.utils``
+
+- ``astropy.vo``
+
+- ``astropy.wcs``
+
+Bug Fixes
+^^^^^^^^^
+
+- ``astropy.config``
+
+- ``astropy.constants``
+
+- ``astropy.convolution``
+
+- ``astropy.coordinates``
+
+- ``astropy.cosmology``
+
+- ``astropy.io.ascii``
+
+- ``astropy.io.fits``
+
+- ``astropy.io.misc``
+
+- ``astropy.io.registry``
+
+- ``astropy.io.votable``
+
+- ``astropy.modeling``
+
+- ``astropy.nddata``
+
+- ``astropy.stats``
+
+- ``astropy.table``
+
+- ``astropy.time``
+
+- ``astropy.units``
+
+- ``astropy.utils``
+
+- ``astropy.vo``
+
+- ``astropy.wcs``
+
+Other Changes and Additions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Nothing changed yet.
+""".rstrip())
+
+
 def postreleaser_before(data):
     """
     postreleaser.before hook to set a different dev_version_template from the
     default: By default zest.releaser uses <version>.dev0.  We want just
     <version>.dev without the mysterious 0.
     """
-
-    if data['name'] != 'astropy':
-        return
-
     data['dev_version_template'] = '%(new_version)s.dev'
+    data['nothing_changed_yet'] = _NEW_CHANGELOG_TEMPLATE
 
 
 def postreleaser_middle(data):
@@ -122,7 +244,6 @@ def postreleaser_middle(data):
     postreleaser.middle hook to update the setup.py with the new version. See
     prereleaser_middle for more details.
     """
-
     _update_setup_py_version(data['dev_version'])
 
 

@@ -1,5 +1,3 @@
-import sys
-import time
 import tempfile
 
 from ....tests.helper import pytest
@@ -7,8 +5,7 @@ from ....utils.data import get_pkg_data_filename
 
 from ..hub import SAMPHubServer
 from ..integrated_client import SAMPIntegratedClient
-from ..constants import SAMP_STATUS_OK
-from ..errors import SAMPClientError, SAMPProxyError
+from ..errors import SAMPProxyError
 
 # By default, tests should not use the internet.
 from .. import conf
@@ -24,8 +21,6 @@ TEST_KEY1 = get_pkg_data_filename('data/test1.key')
 
 TEST_CERT2 = get_pkg_data_filename('data/test2.crt')
 TEST_KEY2 = get_pkg_data_filename('data/test2.key')
-
-PY31 = sys.version_info[:2] == (3, 1)
 
 
 class TestStandardProfile(object):
@@ -254,7 +249,6 @@ class TestStandardProfile(object):
 # https://github.com/astropy/astropy/issues/2126
 # https://github.com/astropy/astropy/issues/2321
 
-@pytest.mark.xfail
 class TestStandardProfileHTTPSHub(TestStandardProfile):
 
     conf = 'https_hub'
@@ -268,7 +262,6 @@ class TestStandardProfileHTTPSHub(TestStandardProfile):
                }
 
 
-@pytest.mark.xfail
 class TestStandardProfileHTTPSHubClient(TestStandardProfile):
 
     conf = 'https_hub_client'

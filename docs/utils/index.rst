@@ -20,24 +20,21 @@ Because of the mostly standalone and grab-bag nature of these utilities, they
 are generally best understood through their docstrings, and hence this
 documentation does not have detailed sections like the other packages.
 
-.. note::
-    The ``astropy.utils.compat`` subpackage is not included in this
+.. note:: The ``astropy.utils.compat`` subpackage is not included in this
     documentation. It contains utility modules for compatibility with
-    older/newer versions of python, as well as including some bugfixes
-    for the stdlib that are important for Astropy. It is recommended
-    that developers at least glance over the source code for this
-    subpackage, but it cannot be reliably included here because of the
-    large amount of version-specific code it contains.
-
+    older/newer versions of python and numpy, as well as including some
+    bugfixes for the stdlib that are important for Astropy. It is recommended
+    that developers at least glance over the source code for this subpackage,
+    but most of it cannot be reliably included here because of the large
+    amount of version-specific code it contains. For numpy, however, there are
+    :ref:`instructions <numpy-compatibility>` on how to deal with issues of
+    compatibility between different versions.
 
 Reference/API
 =============
 .. module:: astropy.utils
 
-.. automodapi:: astropy.utils.misc
-    :no-inheritance-diagram:
-
-.. automodapi:: astropy.utils.exceptions
+.. automodapi:: astropy.utils.codegen
     :no-inheritance-diagram:
 
 .. automodapi:: astropy.utils.collections
@@ -46,11 +43,27 @@ Reference/API
 .. automodapi:: astropy.utils.console
     :no-inheritance-diagram:
 
-.. automodapi:: astropy.utils.timer
+.. automodapi:: astropy.utils.decorators
+    :no-inheritance-diagram:
+
+.. automodapi:: astropy.utils.exceptions
+    :no-inheritance-diagram:
+
+.. automodapi:: astropy.utils.introspection
+    :no-inheritance-diagram:
+
+.. automodapi:: astropy.utils.metadata
+    :no-inheritance-diagram:
+
+.. automodapi:: astropy.utils.misc
     :no-inheritance-diagram:
 
 .. automodapi:: astropy.utils.state
     :no-inheritance-diagram:
+
+.. automodapi:: astropy.utils.timer
+    :no-inheritance-diagram:
+
 
 File Downloads
 --------------

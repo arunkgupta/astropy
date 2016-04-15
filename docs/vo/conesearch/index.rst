@@ -65,7 +65,8 @@ basic Cone Search.
 List the available Cone Search catalogs:
 
 >>> conesearch.list_catalogs()
-[u'Guide Star Catalog 2.3 1',
+[u'2MASS All-Sky Point Source Catalog 1',
+ u'Guide Star Catalog v2 1',
  u'SDSS DR7 - Sloan Digital Sky Survey Data Release 7 1',
  u'SDSS DR7 - Sloan Digital Sky Survey Data Release 7 2',
  u'SDSS DR7 - Sloan Digital Sky Survey Data Release 7 3',
@@ -79,8 +80,7 @@ List the available Cone Search catalogs:
  u'The USNO-A2.0 Catalogue (Monet+ 1998) 1',
  u'Two Micron All Sky Survey (2MASS) 1',
  u'Two Micron All Sky Survey (2MASS) 2',
- u'USNO-A2 Catalogue 1',
- u'USNO-A2.0 1']
+ u'USNO-A2 Catalogue 1']
 
 Select a 2MASS catalog from the list above that is to be searched:
 
@@ -88,11 +88,11 @@ Select a 2MASS catalog from the list above that is to be searched:
 
 Query the selected 2MASS catalog around M31 with a 0.1-degree search radius:
 
->>> from astropy.coordinates import ICRS
+>>> from astropy.coordinates import SkyCoord
 >>> from astropy import units as u
->>> c = ICRS.from_name('M31')
+>>> c = SkyCoord.from_name('M31')  # doctest: +REMOTE_DATA
 >>> c.ra, c.dec
-(<Longitude 10.684708300000011 deg>, <Latitude 41.26875 deg>)
+(<Longitude 10.6847083 deg>, <Latitude 41.26875 deg>)
 >>> result = conesearch.conesearch(c, 0.1 * u.degree, catalog_db=my_catname)
 Trying http://wfaudata.roe.ac.uk/twomass-dsa/DirectCone?DSACAT=TWOMASS&...
 Downloading ...
@@ -100,7 +100,14 @@ WARNING: W06: ... UCD has invalid character '?' in '??' [...]
 WARNING: W50: ... Invalid unit string 'yyyy-mm-dd' [...]
 WARNING: W50: ... Invalid unit string 'Julian days' [...]
 >>> result
-<Table rows=2008 names=('cx','cy', ...>
+<Table masked=True length=2008>
+         cx                  cy                  cz         ... coadd_key coadd
+                                                            ...
+      float64             float64             float64       ...   int32   int16
+------------------- ------------------- ------------------- ... --------- -----
+0.73822176804799999 0.14085682400300001 0.65968778699599995 ...   1590632   244
+0.73829073865999995      0.140689543019 0.65964629741500003 ...   1590632   244
+                ...                 ...                 ... ...       ...   ...
 >>> result.url
 u'http://wfaudata.roe.ac.uk/twomass-dsa/DirectCone?DSACAT=TWOMASS&DSATAB=twomass_psc&'
 

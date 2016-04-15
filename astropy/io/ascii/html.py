@@ -57,10 +57,10 @@ def identify_table(soup, htmldict, numtable):
         return 'id' in soup.attrs and soup['id'] == table_id
     elif isinstance(table_id, int):
         return table_id == numtable
-    
+
     # Return False if an invalid parameter is given
     return False
-    
+
 
 class HTMLInputter(core.BaseInputter):
     """
@@ -75,14 +75,17 @@ class HTMLInputter(core.BaseInputter):
         Convert the given input into a list of SoupString rows
         for further processing.
         """
-        
+
         try:
             from bs4 import BeautifulSoup
         except ImportError:
             raise core.OptionalTableImportError('BeautifulSoup must be '
                                         'installed to read HTML tables')
-        
-        soup = BeautifulSoup('\n'.join(lines))
+
+        if 'parser' not in self.html:
+            soup = BeautifulSoup('\n'.join(lines))
+        else: # use a custom backend parser
+            soup = BeautifulSoup('\n'.join(lines), self.html['parser'])
         tables = soup.find_all('table')
         for i, possible_table in enumerate(tables):
             if identify_table(possible_table, self.html, i + 1):
@@ -95,12 +98,12 @@ class HTMLInputter(core.BaseInputter):
                 err_descr = "id '{0}'".format(self.html['table_id'])
             raise core.InconsistentTableError(
                 'ERROR: HTML table {0} not found'.format(err_descr))
-        
+
         # Get all table rows
         soup_list = [SoupString(x) for x in table.find_all('tr')]
 
         return soup_list
-        
+
 class HTMLSplitter(core.BaseSplitter):
     """
     Split HTML table data.
@@ -156,14 +159,16 @@ class HTMLOutputter(core.TableOutputter):
                 col_num += 1
 
         return super(HTMLOutputter, self).__call__(new_cols, meta)
-        
+
 
 class HTMLHeader(core.BaseHeader):
+    splitter_class = HTMLSplitter
+
     def start_line(self, lines):
         """
         Return the line number at which header data begins.
         """
-        
+
         for i, line in enumerate(lines):
             if not isinstance(line, SoupString):
                 raise TypeError('HTML lines should be of type SoupString')
@@ -195,25 +200,27 @@ class HTMLHeader(core.BaseHeader):
                 new_names.append(name)
 
         self.names = new_names
-    
+
 
 class HTMLData(core.BaseData):
+    splitter_class = HTMLSplitter
+
     def start_line(self, lines):
         """
         Return the line number at which table data begins.
         """
-        
+
         for i, line in enumerate(lines):
             if not isinstance(line, SoupString):
                 raise TypeError('HTML lines should be of type SoupString')
             soup = line.soup
-            
+
             if soup.td is not None:
                 if soup.th is not None:
                     raise core.InconsistentTableError('HTML tables cannot '
                                 'have headings and data in the same row')
                 return i
-        
+
         raise core.InconsistentTableError('No start line found for HTML data')
 
     def end_line(self, lines):
@@ -221,7 +228,7 @@ class HTMLData(core.BaseData):
         Return the line number at which table data ends.
         """
         last_index = -1
-        
+
         for i, line in enumerate(lines):
             if not isinstance(line, SoupString):
                 raise TypeError('HTML lines should be of type SoupString')
@@ -234,8 +241,7 @@ class HTMLData(core.BaseData):
         return last_index + 1
 
 class HTML(core.BaseReader):
-    """
-    Read and write HTML tables.
+    """Read and write HTML tables.
 
     In order to customize input and output, a dict of parameters may
     be passed to this class holding specific customizations.
@@ -248,7 +254,7 @@ class HTML(core.BaseReader):
 
         * table_id : ID for the input table
             If a string, this defines the HTML id of the table to be processed.
-            If an integer, this specificies the index of the input table in the
+            If an integer, this specifies the index of the input table in the
             available tables. Unless this parameter is given, the reader will
             use the first table found in the input file.
 
@@ -257,28 +263,54 @@ class HTML(core.BaseReader):
             columns if this parameter is true, and if not then it will
             use the syntax 1.36583e-13 .. 1.36583e-13 for output. If not
             present, this parameter will be true by default.
-    
+
+        * raw_html_cols : column name or list of names with raw HTML content
+            This allows one to include raw HTML content in the column output,
+            for instance to include link references in a table.  This option
+            requires that the bleach package be installed.  Only whitelisted
+            tags are allowed through for security reasons (see the
+            raw_html_clean_kwargs arg).
+
+        * raw_html_clean_kwargs : dict of keyword args controlling HTML cleaning
+            Raw HTML will be cleaned to prevent unsafe HTML from ending up in
+            the table output.  This is done by calling ``bleach.clean(data,
+            **raw_html_clean_kwargs)``.  For details on the available options
+            (e.g. tag whitelist) see:
+            http://bleach.readthedocs.org/en/latest/clean.html
+
+        * parser : Specific HTML parsing library to use
+            If specified, this specifies which HTML parsing library
+            BeautifulSoup should use as a backend. The options to choose
+            from are 'html.parser' (the standard library parser), 'lxml'
+            (the recommended parser), 'xml' (lxml's XML parser), and
+            'html5lib'. html5lib is a highly lenient parser and therefore
+            might work correctly for unusual input if a different parser
+            fails.
+
+        * jsfiles : list of js files to include when writing table.
+
+        * cssfiles : list of css files to include when writing table.
+
+        * js : js script to include in the body when writing table.
+
+        * table_class : css class for the table
+
     """
-    
+
     _format_name = 'html'
     _io_registry_format_aliases = ['html']
     _io_registry_suffix = '.html'
     _description = 'HTML table'
 
+    header_class = HTMLHeader
+    data_class = HTMLData
+    inputter_class = HTMLInputter
+
     def __init__(self, htmldict={}):
         """
         Initialize classes for HTML reading and writing.
         """
-        core.BaseReader.__init__(self)
-        self.inputter = HTMLInputter()
-        self.header = HTMLHeader()
-        self.data = HTMLData()
-        self.header.splitter = HTMLSplitter()
-        self.header.inputter = HTMLInputter()
-        self.data.splitter = HTMLSplitter()
-        self.data.inputter = HTMLInputter()
-        self.data.header = self.header
-        self.header.data = self.data
+        super(HTML, self).__init__()
         self.html = deepcopy(htmldict)
         if 'multicol' not in htmldict:
             self.html['multicol'] = True
@@ -293,7 +325,7 @@ class HTML(core.BaseReader):
 
         self.outputter = HTMLOutputter()
         return core.BaseReader.read(self, table)
-    
+
     def write(self, table):
         """
         Return data in ``table`` converted to HTML as a list of strings.
@@ -302,9 +334,18 @@ class HTML(core.BaseReader):
         cols = list(six.itervalues(table.columns))
         lines = []
 
+        # Set HTML escaping to False for any column in the raw_html_cols input
+        raw_html_cols = self.html.get('raw_html_cols', [])
+        if isinstance(raw_html_cols, six.string_types):
+            raw_html_cols = [raw_html_cols]  # Allow for a single string as input
+        cols_escaped = [col.info.name not in raw_html_cols for col in cols]
+
+        # Kwargs that get passed on to bleach.clean() if that is available.
+        raw_html_clean_kwargs = self.html.get('raw_html_clean_kwargs', {})
+
         # Use XMLWriter to output HTML to lines
         w = writer.XMLWriter(ListWriter(lines))
-        
+
         with w.tag('html'):
             with w.tag('head'):
                 # Declare encoding and set CSS style for table
@@ -316,34 +357,61 @@ class HTML(core.BaseReader):
                 if 'css' in self.html:
                     with w.tag('style'):
                         w.data(self.html['css'])
+                if 'cssfiles' in self.html:
+                    for filename in self.html['cssfiles']:
+                        with w.tag('link', rel="stylesheet", href=filename, type='text/css'):
+                            pass
+                if 'jsfiles' in self.html:
+                    for filename in self.html['jsfiles']:
+                        with w.tag('script', src=filename):
+                            w.data('')  # need this instead of pass to get <script></script>
             with w.tag('body'):
-                with w.tag('table'):
-                    with w.tag('tr'):
-                        for col in cols:
+                if 'js' in self.html:
+                    with w.tag('script'):
+                        w.data(self.html['js'])
+                if isinstance(self.html['table_id'], six.string_types):
+                    html_table_id = self.html['table_id']
+                else:
+                    html_table_id = None
+                if 'table_class' in self.html:
+                    html_table_class = self.html['table_class']
+                    attrib={"class":html_table_class}
+                else:
+                    attrib={}
+                with w.tag('table', id=html_table_id, attrib=attrib):
+                    with w.tag('thead'):
+                        with w.tag('tr'):
+                            for col in cols:
+                                if len(col.shape) > 1 and self.html['multicol']:
+                                    # Set colspan attribute for multicolumns
+                                    w.start('th', colspan=col.shape[1])
+                                else:
+                                    w.start('th')
+                                w.data(col.info.name.strip())
+                                w.end(indent=False)
+                        col_str_iters = []
+                        new_cols_escaped = []
+                        for col, col_escaped in izip(cols, cols_escaped):
                             if len(col.shape) > 1 and self.html['multicol']:
-                                # Set colspan attribute for multicolumns
-                                w.start('th', colspan=col.shape[1])
+                                span = col.shape[1]
+                                for i in range(span):
+                                    # Split up multicolumns into separate columns
+                                    new_col = Column([el[i] for el in col])
+                                    col_str_iters.append(new_col.info.iter_str_vals())
+                                    new_cols_escaped.append(col_escaped)
                             else:
-                                w.start('th')
-                            w.data(col.name.strip())
-                            w.end(indent=False)
-                    col_str_iters = []
-                    for col in cols:
-                        if len(col.shape) > 1 and self.html['multicol']:
-                            span = col.shape[1]
-                            for i in range(span):
-                                # Split up multicolumns into separate columns
-                                new_col = Column([el[i] for el in col])
-                                col_str_iters.append(new_col.iter_str_vals())
-                        else:
-                            col_str_iters.append(col.iter_str_vals())
+                                col_str_iters.append(col.info.iter_str_vals())
+                                new_cols_escaped.append(col_escaped)
 
                     for row in izip(*col_str_iters):
                         with w.tag('tr'):
-                            for el in row:
-                                w.start('td')
-                                w.data(el.strip())
-                                w.end(indent=False)
+                            for el, col_escaped in izip(row, new_cols_escaped):
+                                # Potentially disable HTML escaping for column
+                                method = ('escape_xml' if col_escaped else 'bleach_clean')
+                                with w.xml_cleaning_method(method, **raw_html_clean_kwargs):
+                                    w.start('td')
+                                    w.data(el.strip())
+                                    w.end(indent=False)
 
         # Fixes XMLWriter's insertion of unwanted line breaks
         return [''.join(lines)]

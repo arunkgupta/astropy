@@ -4,6 +4,8 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+from copy import deepcopy
+
 import numpy as np
 from numpy.testing import assert_allclose
 
@@ -11,11 +13,21 @@ from ... import units as u
 from ...tests.helper import pytest
 from ..angles import Longitude, Latitude, Angle
 from ..distances import Distance
-from ..representation import (SphericalRepresentation,
+from ..representation import (REPRESENTATION_CLASSES,
+                              SphericalRepresentation,
                               UnitSphericalRepresentation,
                               CartesianRepresentation,
                               CylindricalRepresentation,
                               PhysicsSphericalRepresentation)
+
+
+def setup_function(func):
+    func.REPRESENTATION_CLASSES_ORIG = deepcopy(REPRESENTATION_CLASSES)
+
+
+def teardown_function(func):
+    REPRESENTATION_CLASSES.clear()
+    REPRESENTATION_CLASSES.update(func.REPRESENTATION_CLASSES_ORIG)
 
 
 def assert_allclose_quantity(q1, q2):
@@ -53,6 +65,14 @@ class TestSphericalRepresentation(object):
         assert isinstance(s2.lat, Latitude)
         assert isinstance(s2.distance, Distance)
 
+        # also test that wrap_angle is preserved
+        s3 = SphericalRepresentation(Longitude(-90, u.degree,
+                                               wrap_angle=180*u.degree),
+                                     Latitude(-45, u.degree),
+                                     Distance(1., u.Rsun))
+        assert s3.lon == -90. * u.degree
+        assert s3.lon.wrap_angle == 180 * u.degree
+
     def test_init_array(self):
 
         s1 = SphericalRepresentation(lon=[8, 9] * u.hourangle,
@@ -82,6 +102,16 @@ class TestSphericalRepresentation(object):
         assert_allclose_quantity(lon, s1.lon)
         assert_allclose_quantity(lat, s1.lat)
         assert_allclose_quantity(distance, s1.distance)
+
+    def test_init_float32_array(self):
+        """Regression test against #2983"""
+        lon = Longitude(np.float32([1., 2.]), u.degree)
+        lat = Latitude(np.float32([3., 4.]), u.degree)
+        s1 = UnitSphericalRepresentation(lon=lon, lat=lat, copy=False)
+        assert s1.lon.dtype == np.float32
+        assert s1.lat.dtype == np.float32
+        assert s1._values['lon'].dtype == np.float32
+        assert s1._values['lat'].dtype == np.float32
 
     def test_reprobj(self):
 
@@ -490,23 +520,15 @@ class TestCartesianRepresentation(object):
         assert_allclose(s1.z.value, 3)
 
     def test_init_one_array_size_fail(self):
-
         with pytest.raises(ValueError) as exc:
             s1 = CartesianRepresentation(x=[1, 2, 3, 4] * u.pc)
-
-        # exception text differs on Python 2 and Python 3
-        if hasattr(exc.value, 'args'):
-            assert exc.value.args[0].startswith("too many values to unpack")
-        else:
-            #py 2.6 doesn't have `args`
-            assert exc.value == 'too many values to unpack'
+        assert exc.value.args[0].startswith("too many values to unpack")
 
     def test_init_one_array_yz_fail(self):
-
         with pytest.raises(ValueError) as exc:
             s1 = CartesianRepresentation(x=[1, 2, 3, 4] * u.pc, y=[1, 2] * u.pc)
-
-        assert exc.value.args[0] == "x, y, and z are required to instantiate CartesianRepresentation"
+        assert exc.value.args[0] == ("x, y, and z are required to instantiate "
+                                     "CartesianRepresentation")
 
     def test_init_array_nocopy(self):
 
@@ -875,10 +897,12 @@ def test_unit_spherical_roundtrip():
 
 def test_representation_repr():
     r1 = SphericalRepresentation(lon=1 * u.deg, lat=2.5 * u.deg, distance=1 * u.kpc)
-    assert repr(r1) == '<SphericalRepresentation lon=1.0 deg, lat=2.5 deg, distance=1.0 kpc>'
+    assert repr(r1) == ('<SphericalRepresentation (lon, lat, distance) in (deg, deg, kpc)\n'
+                        '    (1.0, 2.5, 1.0)>')
 
     r2 = CartesianRepresentation(x=1 * u.kpc, y=2 * u.kpc, z=3 * u.kpc)
-    assert repr(r2) == '<CartesianRepresentation x=1.0 kpc, y=2.0 kpc, z=3.0 kpc>'
+    assert repr(r2) == ('<CartesianRepresentation (x, y, z) in kpc\n'
+                        '    (1.0, 2.0, 3.0)>')
 
     r3 = CartesianRepresentation(x=[1, 2, 3] * u.kpc, y=4 * u.kpc, z=[9, 10, 11] * u.kpc)
     assert repr(r3) == ('<CartesianRepresentation (x, y, z) in kpc\n'
@@ -887,10 +911,39 @@ def test_representation_repr():
 
 def test_representation_str():
     r1 = SphericalRepresentation(lon=1 * u.deg, lat=2.5 * u.deg, distance=1 * u.kpc)
-    assert str(r1) == '(1.0 deg, 2.5 deg, 1.0 kpc)'
+    assert str(r1) == '(1.0, 2.5, 1.0) (deg, deg, kpc)'
 
     r2 = CartesianRepresentation(x=1 * u.kpc, y=2 * u.kpc, z=3 * u.kpc)
     assert str(r2) == '(1.0, 2.0, 3.0) kpc'
 
     r3 = CartesianRepresentation(x=[1, 2, 3] * u.kpc, y=4 * u.kpc, z=[9, 10, 11] * u.kpc)
     assert str(r3) == '[(1.0, 4.0, 9.0) (2.0, 4.0, 10.0) (3.0, 4.0, 11.0)] kpc'
+
+
+def test_subclass_representation():
+    from collections import OrderedDict
+    from ..builtin_frames import ICRS
+
+    class Longitude180(Longitude):
+        def __new__(cls, angle, unit=None, wrap_angle=180 * u.deg, **kwargs):
+            self = super(Longitude180, cls).__new__(cls, angle, unit=unit,
+                                                    wrap_angle=wrap_angle, **kwargs)
+            return self
+
+    class SphericalWrap180Representation(SphericalRepresentation):
+        attr_classes = OrderedDict([('lon', Longitude180),
+                                    ('lat', Latitude),
+                                    ('distance', u.Quantity)])
+        recommended_units = {'lon': u.deg, 'lat': u.deg}
+
+    class ICRSWrap180(ICRS):
+        frame_specific_representation_info = ICRS._frame_specific_representation_info.copy()
+        frame_specific_representation_info['sphericalwrap180'] = \
+            frame_specific_representation_info['spherical']
+        default_representation = SphericalWrap180Representation
+
+    c = ICRSWrap180(ra=-1 * u.deg, dec=-2 * u.deg, distance=1 * u.m)
+    assert c.ra.value == -1
+    assert c.ra.unit is u.deg
+    assert c.dec.value == -2
+    assert c.dec.unit is u.deg

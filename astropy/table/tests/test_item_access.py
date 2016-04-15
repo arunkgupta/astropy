@@ -5,12 +5,9 @@
 """ Verify item access API in:
 https://github.com/astropy/astropy/wiki/Table-item-access-definition
 """
-from distutils import version
 import numpy as np
 
 from ...tests.helper import pytest
-from ... import table
-from .conftest import MaskedTable
 
 
 @pytest.mark.usefixtures('table_data')
@@ -116,11 +113,34 @@ class TestTableItems(BaseTestItems):
         assert row.columns['a'].attrs_equal(table_data.COLS[0])
         assert row.columns['b'].attrs_equal(table_data.COLS[1])
         assert row.columns['c'].attrs_equal(table_data.COLS[2])
+
+        # Check that setting by col index sets the table and row value
         row[1] = 0
         assert row[1] == 0
-        if table_data.Table is not MaskedTable:
-            # numpy.core.ma.mvoid makes a copy so this test is skipped for masked table
-            assert self.t['b'][1] == 0
+        assert row['b'] == 0
+        assert self.t['b'][1] == 0
+        assert self.t[1]['b'] == 0
+
+        # Check that setting by col name sets the table and row value
+        row['a'] = 0
+        assert row[0] == 0
+        assert row['a'] == 0
+        assert self.t['a'][1] == 0
+        assert self.t[1]['a'] == 0
+
+    def test_empty_iterable_item(self, table_data):
+        """
+        Table item access with [], (), or np.array([]) returns the same table
+        with no rows.
+        """
+        self.t = table_data.Table(table_data.COLS)
+        for item in [], (), np.array([]):
+            t2 = self.t[item]
+            assert not t2
+            assert len(t2) == 0
+            assert t2['a'].attrs_equal(table_data.COLS[0])
+            assert t2['b'].attrs_equal(table_data.COLS[1])
+            assert t2['c'].attrs_equal(table_data.COLS[2])
 
     def test_table_slice(self, table_data):
         """Table slice returns REFERENCE to data"""
@@ -151,7 +171,7 @@ class TestTableItems(BaseTestItems):
         assert t2['c'].attrs_equal(table_data.COLS[2])
         t2['a'][0] = 0
 
-        assert np.all(self.t._data == table_data.DATA)
+        assert np.all(self.t.as_array() == table_data.DATA)
         assert np.any(t2['a'] != table_data.DATA['a'][slice])
         assert t2.masked == self.t.masked
         assert t2._column_class == self.t._column_class
@@ -170,7 +190,7 @@ class TestTableItems(BaseTestItems):
         assert t2['c'].attrs_equal(table_data.COLS[2])
         t2['a'][0] = 0
 
-        assert np.all(self.t._data == table_data.DATA)
+        assert np.all(self.t.as_array() == table_data.DATA)
         assert np.any(t2['a'] != table_data.DATA['a'][slice])
         assert t2.masked == self.t.masked
         assert t2._column_class == self.t._column_class
@@ -190,7 +210,7 @@ class TestTableItems(BaseTestItems):
             assert t2['a'].attrs_equal(table_data.COLS[0])
             assert t2['c'].attrs_equal(table_data.COLS[2])
             t2['a'][0] = 0
-            assert np.all(self.t._data == table_data.DATA)
+            assert np.all(self.t.as_array() == table_data.DATA)
             assert np.any(t2['a'] != table_data.DATA['a'])
             assert t2.masked == self.t.masked
             assert t2._column_class == self.t._column_class

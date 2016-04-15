@@ -342,7 +342,7 @@ class W03(VOTableChangeWarning):
     <http://www.ivoa.net/Documents/VOTable/20091130/REC-VOTable-1.2.html#sec:name>`__
     """
 
-    message_template = "Implictly generating an ID from a name '%s' -> '%s'"
+    message_template = "Implicitly generating an ID from a name '%s' -> '%s'"
     default_args = ('x', 'y')
 
 
@@ -515,6 +515,11 @@ class W13(VOTableSpecWarning):
        int64         -> long
        float32       -> float
        float64       -> double
+       unsignedInt   -> long
+       unsignedShort -> int
+
+    To add more datatype mappings during parsing, use the
+    ``datatype_mapping`` keyword to `astropy.io.votable.parse`.
 
     **References**: `1.1
     <http://www.ivoa.net/Documents/VOTable/20040811/REC-VOTable-1.1-20040811.html#sec:datatypes>`__,
@@ -1161,6 +1166,11 @@ class E06(VOWarning, ValueError):
         int64         -> long
         float32       -> float
         float64       -> double
+        unsignedInt   -> long
+        unsignedShort -> int
+
+    To add more datatype mappings during parsing, use the
+    ``datatype_mapping`` keyword to `astropy.io.votable.parse`.
 
     **References**: `1.1
     <http://www.ivoa.net/Documents/VOTable/20040811/REC-VOTable-1.1-20040811.html#sec:datatypes>`__,
@@ -1436,7 +1446,8 @@ def _build_doc_string():
     return {'warnings': warnings,
             'exceptions': exceptions}
 
-__doc__ = __doc__.format(**_build_doc_string())
+if __doc__ is not None:
+    __doc__ = __doc__.format(**_build_doc_string())
 
 __all__.extend([x[0] for x in _get_warning_and_exception_classes('W')])
 __all__.extend([x[0] for x in _get_warning_and_exception_classes('E')])

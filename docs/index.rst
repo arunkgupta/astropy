@@ -16,12 +16,19 @@
 Astropy Core Package Documentation
 ##################################
 
-.. image:: astropy_banner_96.png
-    :width: 485px
-    :height: 96px
-    :target: http://www.astropy.org/
+.. |logo_svg| image:: _static/astropy_banner.svg
 
-Welcome to the ``astropy`` documentation! ``astropy`` is a community-driven
+.. |logo_png| image:: _static/astropy_banner_96.png
+
+.. raw:: html
+
+   <img src="_images/astropy_banner.svg" onerror="this.src='_images/astropy_banner_96.png'; this.onerror=null;" width="485"/>
+
+.. only:: latex
+
+    .. image:: _static/astropy_logo.pdf
+
+Welcome to the Astropy documentation! Astropy is a community-driven
 package intended to contain much of the core functionality and some common
 tools needed for performing astronomy and astrophysics with Python.
 
@@ -31,8 +38,17 @@ tools needed for performing astronomy and astrophysics with Python.
 User Documentation
 ******************
 
-:doc:`whatsnew/0.4`
--------------------
+.. only:: html
+
+    :doc:`whatsnew/1.1`
+    -------------------
+
+.. only:: latex
+
+    .. toctree::
+       :maxdepth: 1
+
+       whatsnew/1.0
 
 **Astropy at a glance**
 
@@ -56,6 +72,7 @@ User Documentation
    coordinates/index
    wcs/index
    modeling/index
+   analytic_functions/index
 
 **Connecting up: Files and I/O**
 
@@ -74,6 +91,7 @@ User Documentation
    :maxdepth: 1
 
    convolution/index
+   visualization/index
    cosmology/index
    stats/index
    vo/index
@@ -88,6 +106,7 @@ User Documentation
    logging
    warnings
    utils/index
+   testhelpers
 
 **Astropy project details**
 
@@ -135,6 +154,20 @@ information about your operating system and a full Python stack trace; the
 Astropy developers will walk you through obtaining a stack trace if it is
 necessary.
 
+
+For astropy-helpers
+-------------------
+
+As of Astropy v0.4, Astropy and many affiliated packages use a package of
+utilities called astropy-helpers during building and installation.  If you have
+any build/installation issue--particularly if you're getting a traceback
+mentioning the ``astropy_helpers`` or ``ah_bootstrap`` modules--please send a
+report to the `astropy-helpers issue tracker
+<https://github.com/astropy/astropy-helpers/issues>`_.  If you're not sure,
+however, it's fine to report via the main Astropy issue tracker or one of the
+other avenues described above.
+
+
 ************
 Contributing
 ************
@@ -167,6 +200,10 @@ Astropy or affiliated packages, as well as coding, documentation, and
 testing guidelines. For the guiding vision of this process and the project
 as a whole, see :doc:`development/vision`.
 
+There are additional tools of use for developers in the
+`astropy/astropy-tools repository
+<http://github.com/astropy/astropy-tools>`__.
+
 .. toctree::
    :maxdepth: 1
 
@@ -179,6 +216,7 @@ as a whole, see :doc:`development/vision`.
    development/ccython
    development/releasing
    development/workflow/maintainer_workflow
+   development/affiliated-packages
    changelog
 
 ******************

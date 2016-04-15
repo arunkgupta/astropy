@@ -46,7 +46,7 @@ class TestConeSearch(object):
     """
     def setup_class(self):
         # If this link is broken, use the next in database that works
-        self.url = 'http://www.nofs.navy.mil/cgi-bin/vo_cone.cgi?CAT=USNO-A2&'
+        self.url = 'http://vizier.u-strasbg.fr/viz-bin/votable/-A?-out.all&-source=I/252/out&'
         self.catname = 'USNO-A2'
 
         # Avoid downloading the full database
@@ -79,7 +79,7 @@ class TestConeSearch(object):
 
         """
         tab_1 = conesearch.conesearch(
-            center, radius, pedantic=self.pedantic, verbose=self.verbose)
+            center, radius, pedantic=None, verbose=self.verbose)
 
         assert tab_1.array.size > 0
 
@@ -93,6 +93,18 @@ class TestConeSearch(object):
             pedantic=self.pedantic, verbose=self.verbose)
 
         assert tab.array.size > 0
+
+    def test_timeout(self):
+        """Test time out error."""
+        try:
+            with data.conf.set_temp('remote_timeout', 0.001):
+                tab = conesearch.conesearch(
+                    SCS_CENTER, SCS_RADIUS, pedantic=self.pedantic,
+                    verbose=self.verbose, catalog_db=self.url, cache=False)
+        except VOSError as e:
+            assert 'timed out' in str(e), 'test_timeout failed'
+        else:
+            raise Exception('test_timeout failed')
 
     def test_searches(self):
         tab_2 = conesearch.conesearch(
@@ -153,8 +165,8 @@ class TestConeSearch(object):
             assert tab.array.size > 0
 
     @pytest.mark.parametrize(('center', 'radius'),
-                             [((SCS_RA, SCS_DEC), 1.0),
-                              (SCS_CENTER, 1.0 * u.degree)])
+                             [((SCS_RA, SCS_DEC), 0.8),
+                              (SCS_CENTER, 0.8 * u.degree)])
     def test_prediction(self,  center, radius):
         """Prediction tests are not very accurate but will have to do."""
         t_1, tab_1 = conesearch.conesearch_timer(
@@ -167,7 +179,9 @@ class TestConeSearch(object):
             pedantic=self.pedantic, verbose=self.verbose)
 
         assert n_2 > 0 and n_2 <= n_1 * 1.5
-        assert t_2 > 0 and t_2 <= t_1 * 1.5
+
+        # Timer depends on network latency as well, so upper limit is very lax.
+        assert t_2 > 0 and t_2 <= t_1 * 10
 
     def test_prediction_neg_radius(self):
         with pytest.raises(ConeSearchError):

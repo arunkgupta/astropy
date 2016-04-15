@@ -69,7 +69,13 @@ procedure is that ensures a consistent release process each time.
     ensure that the latest version is installed in the virtualenv (if you're
     running a csh variant make sure to run ``rehash`` afterwards too)::
 
-        $ pip install zest.releaser --upgrade --force
+        $ pip install zest.releaser==3.49 --upgrade --force
+
+    .. note::
+
+        zest.releaser > 3.49 has a still open issue that prevents our release
+        code from correctly updating the ``VERSION`` variable in our ``setup.py``;
+        see `zestsoftware/zest.releaser#62 <https://github.com/zestsoftware/zest.releaser/pull/62>`_.
 
  9. Ensure that all changes to the code have been committed, then start the
     release by running::
@@ -113,11 +119,19 @@ procedure is that ensures a consistent release process each time.
 
  17. Create the source distribution by doing::
 
-         $ python setup.py sdist
+         $ git clean -dfx  # just in case
+         $ python setup.py build sdist
 
      Copy the produced ``.tar.gz`` somewhere and verify that you can unpack it,
      build it, and get all the tests to pass.  It would be best to create a new
      virtualenv in which to do this.
+
+     .. note::
+
+         In the future, the ``build`` command should run automatically as a
+         prerequisite for ``sdist``.  But for now, make sure to run it
+         whenever running ``sdist`` to ensure that all Cython sources and
+         other generated files are built.
 
  18. Register the release on PyPI with::
 
@@ -127,7 +141,7 @@ procedure is that ensures a consistent release process each time.
      the sdist command, which is necessary for the upload command to know
      which distribution to upload::
 
-         $ python setup.py sdist upload
+         $ python setup.py build sdist upload --sign
 
  20. Go to https://pypi.python.org/pypi?:action=pkg_edit&name=astropy
      and ensure that only the most recent releases in each actively maintained
@@ -142,12 +156,18 @@ procedure is that ensures a consistent release process each time.
 
          $ git checkout stable
          $ git reset --hard v0.1
-         $ got push origin stable --force
+         $ git push origin stable --force
 
  22. Update Readthedocs so that it builds docs for the corresponding github tag.
      Also verify that the ``stable`` Readthedocs version builds correctly for
      the new version (it should trigger automatically once you've done the
      previous step.)
+
+     When releasing a patch release, also set the previous version in the
+     release history to "protected".  For example when releasing v1.1.2, set
+     v1.1.1 to "protected".  This prevents the previous releases from
+     cluttering the list of versions that users see in the version dropdown
+     (the previous versions are still accessible by their URL though).
 
  23. If this was a major/minor release (not a bug fix release) create a bug fix
      branch for this line of release.  That is, if the version just released
@@ -357,9 +377,9 @@ right version number).
    typical to forget this, so if doesn't exist yet please add one in
    the process of backporting.  See :ref:`changelog-format` for more details.
 
-To aid in this process there is a script called ``suggest_backports.py`` at
-https://gist.github.com/embray/4497178.  The script is not perfect and still
-needs a little work, but it will get most of the work done.  For example, if
+To aid in this process there is a `suggest_backports.py script in the astropy-tools repository <https://github.com/astropy/astropy-tools/blob/master/suggest_backports.py>`_.
+The script is not perfect and still needs a little work, but it will get most of
+the work done.  For example, if
 the current bug fix branch is called 'v0.2.x' run it like so::
 
     $ suggest_backports.py astropy astropy v0.2.x -f backport.sh

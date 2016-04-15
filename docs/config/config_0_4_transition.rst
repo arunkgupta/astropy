@@ -137,6 +137,14 @@ release cycle, and will be removed altogether in astropy 0.5.
      - ``table.column.AUTO_COLNAME``
      - ``[table] auto_colname``
      - ``table.conf.auto_colname``
+   * - ``[table.jsviewer] jquery_url``
+     - ``table.jsviewer.JQUERY_URL``
+     - *unchanged*
+     - ``table.jsviewer.conf.jquery_url``
+   * - ``[table.jsviewer] datatables_url``
+     - ``table.jsviewer.DATATABLES_URL``
+     - *unchanged*
+     - ``table.jsviewer.conf.datatables_url``
    * - ``[table.pprint] max_lines``
      - ``table.pprint.MAX_LINES``
      - ``[] max_lines``
@@ -243,7 +251,8 @@ earlier method to define configuration items::
     ENABLE_RECORD_VALUED_KEYWORD_CARDS = ConfigurationItem(
         'enabled_record_valued_keyword_cards', True,
         'If True, enable support for record-valued keywords as described by '
-        'FITS WCS Paper IV. Otherwise they are treated as normal keywords.')
+        'the FITS WCS distortion paper. Otherwise they are treated as normal '
+        'keywords.')
 
     EXTENSION_NAME_CASE_SENSITIVE = ConfigurationItem(
         'extension_name_case_sensitive', False,
@@ -262,7 +271,8 @@ The above, converted to the new method, looks like::
         enable_record_valued_keyword_cards = _config.ConfigItem(
             True,
             'If True, enable support for record-valued keywords as described by '
-            'FITS WCS Paper IV. Otherwise they are treated as normal keywords.',
+            'the FITS WCS distortion paper. Otherwise they are treated as normal '
+            'keywords.',
             aliases=['astropy.io.fits.enabled_record_valued_keyword_cards'])
 
         extension_name_case_sensitive = _config.ConfigItem(

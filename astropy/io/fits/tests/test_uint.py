@@ -6,8 +6,8 @@ import numpy as np
 
 from ....io import fits
 from . import FitsTestCase
-from .util import ignore_warnings
-from ....tests.helper import pytest
+import platform
+from ....tests.helper import pytest, ignore_warnings
 
 
 class TestUintFunctions(FitsTestCase):
@@ -27,10 +27,10 @@ class TestUintFunctions(FitsTestCase):
         bits = 8*int(utype[1])
         if platform.architecture()[0] == '64bit' or bits != 64:
             if compressed:
-                hdu = fits.CompImageHDU(np.array([-3, -2, -1, 0, 1, 2, 3]))
+                hdu = fits.CompImageHDU(np.array([-3, -2, -1, 0, 1, 2, 3], dtype=np.int64))
                 hdu_number = 1
             else:
-                hdu = fits.PrimaryHDU(np.array([-3, -2, -1, 0, 1, 2, 3]))
+                hdu = fits.PrimaryHDU(np.array([-3, -2, -1, 0, 1, 2, 3], dtype=np.int64))
                 hdu_number = 0
 
             hdu.scale('int{0:d}'.format(bits), '', bzero=2 ** (bits-1))
